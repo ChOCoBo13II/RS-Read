@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,10 @@ class ReadSettings {
   double paragraph = 2.0;
   bool gradual = false;
   bool keepAwake = true;
+  bool showFullscreenHint = true;
+  double zoneOpacity = 0.0;
+  double zoneVertical = 0.5;
+  double zoneMargin = 0.0;
 
   static Future<ReadSettings> load() async {
     final p = await SharedPreferences.getInstance();
@@ -42,6 +47,10 @@ class ReadSettings {
     s.paragraph = p.getDouble('pauseParagraph') ?? s.paragraph;
     s.gradual = p.getBool('gradual') ?? s.gradual;
     s.keepAwake = p.getBool('keepAwake') ?? s.keepAwake;
+    s.showFullscreenHint = !(p.getBool('hideFullscreenHint') ?? false);
+    s.zoneOpacity = p.getDouble('zoneOpacity') ?? s.zoneOpacity;
+    s.zoneVertical = p.getDouble('zoneVertical') ?? s.zoneVertical;
+    s.zoneMargin = p.getDouble('zoneMargin') ?? s.zoneMargin;
     return s;
   }
 
@@ -52,6 +61,10 @@ class ReadSettings {
     await p.setDouble('pauseParagraph', paragraph);
     await p.setBool('gradual', gradual);
     await p.setBool('keepAwake', keepAwake);
+    await p.setBool('hideFullscreenHint', !showFullscreenHint);
+    await p.setDouble('zoneOpacity', zoneOpacity);
+    await p.setDouble('zoneVertical', zoneVertical);
+    await p.setDouble('zoneMargin', zoneMargin);
   }
 }
 
@@ -194,9 +207,11 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Widget _pause(
-    String label,
+  Widget _slider(
+    String text,
     double value,
+    double max,
+    int divisions,
     ValueChanged<double> onChanged,
     ReadSettings s,
   ) {
@@ -205,17 +220,27 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text('$label: ${value.toStringAsFixed(2)} parole'),
+          child: Text(text),
         ),
         Slider(
           value: value,
           min: 0,
-          max: 3,
-          divisions: 12,
+          max: max,
+          divisions: divisions,
           onChanged: (v) => setState(() => onChanged(v)),
           onChangeEnd: (_) => s.save(),
         ),
       ],
+    );
+  }
+
+  Widget _title(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
     );
   }
 
@@ -228,18 +253,58 @@ class _SettingsPageState extends State<SettingsPage> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Text('Pause extra, in durate di una parola'),
+                _title('Pause extra, in durate di una parola'),
+                _slider(
+                  'Dopo la virgola: ${s.comma.toStringAsFixed(2)} parole',
+                  s.comma,
+                  3,
+                  12,
+                  (v) => s.comma = v,
+                  s,
                 ),
-                _pause('Dopo la virgola', s.comma, (v) => s.comma = v, s),
-                _pause('Dopo il punto', s.period, (v) => s.period = v, s),
-                _pause(
-                  'Dopo il paragrafo',
+                _slider(
+                  'Dopo il punto: ${s.period.toStringAsFixed(2)} parole',
+                  s.period,
+                  3,
+                  12,
+                  (v) => s.period = v,
+                  s,
+                ),
+                _slider(
+                  'Dopo il paragrafo: ${s.paragraph.toStringAsFixed(2)} parole',
                   s.paragraph,
+                  3,
+                  12,
                   (v) => s.paragraph = v,
                   s,
                 ),
+                _title('Zone di pausa (schermo intero)'),
+                _slider(
+                  'Opacità: ${(s.zoneOpacity * 100).round()}%',
+                  s.zoneOpacity,
+                  1,
+                  20,
+                  (v) => s.zoneOpacity = v,
+                  s,
+                ),
+                _slider(
+                  'Posizione verticale: ${(s.zoneVertical * 100).round()}% '
+                  '(50% = centro)',
+                  s.zoneVertical,
+                  1,
+                  20,
+                  (v) => s.zoneVertical = v,
+                  s,
+                ),
+                _slider(
+                  'Distanza dal bordo: ${s.zoneMargin.toStringAsFixed(2)} cm',
+                  s.zoneMargin,
+                  2,
+                  8,
+                  (v) => s.zoneMargin = v,
+                  s,
+                ),
+                _title('Lettura'),
                 SwitchListTile(
                   title: const Text('Avvio graduale'),
                   subtitle: const Text(
@@ -257,6 +322,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   value: s.keepAwake,
                   onChanged: (v) {
                     setState(() => s.keepAwake = v);
+                    s.save();
+                  },
+                ),
+                SwitchListTile(
+                  title: const Text('Suggerimento schermo intero'),
+                  subtitle: const Text('Il banner che spiega come usarlo'),
+                  value: s.showFullscreenHint,
+                  onChanged: (v) {
+                    setState(() => s.showFullscreenHint = v);
                     s.save();
                   },
                 ),
@@ -283,10 +357,13 @@ class ReaderPage extends StatefulWidget {
 }
 
 class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
+  static const double _dpPerCm = 63.0;
+
   int _index = 0;
   double _wpm = 300;
   bool _playing = false;
   bool _fullscreen = false;
+  bool _seekWasPlaying = false;
   int _sinceStart = 0;
   ReadSettings _settings = ReadSettings();
   Timer? _timer;
@@ -495,12 +572,32 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       _fullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
     if (_fullscreen) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tocca la parola per uscire dallo schermo intero'),
-        ),
-      );
+      _showFullscreenHint();
+    } else {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
     }
+  }
+
+  void _showFullscreenHint() {
+    if (!_settings.showFullscreenHint) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFF0D3E69),
+        duration: const Duration(seconds: 6),
+        content: const Text(
+          'Tocca i lati per la pausa, la parola per uscire',
+          style: TextStyle(color: Colors.white),
+        ),
+        action: SnackBarAction(
+          label: 'Non mostrare più',
+          textColor: Colors.redAccent,
+          onPressed: () {
+            _settings.showFullscreenHint = false;
+            _settings.save();
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _openSettings() async {
@@ -534,7 +631,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
     final total = widget.words.length;
     final remaining = ((total - _index) * 60 / _wpm).round();
-    final progress = total > 1 ? _index / (total - 1) : 1.0;
+
+    final probe = TextPainter(
+      text: TextSpan(text: 'M', style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final cw = probe.width;
+    final lineH = probe.height;
+    probe.dispose();
+    final dx = (word.length - 1 - 2 * p) * cw / 2;
+    final hitW = word.length * cw + 24;
+    final hitH = lineH + 24;
 
     return Scaffold(
       appBar: _fullscreen
@@ -560,45 +667,125 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
               ],
             ),
       body: SafeArea(
+        top: !_fullscreen,
+        bottom: !_fullscreen,
         child: Column(
           children: [
             Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _fullscreen ? _toggleFullscreen : null,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        word.substring(0, p),
-                        textAlign: TextAlign.right,
-                        softWrap: false,
-                        overflow: TextOverflow.visible,
-                        style: style,
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final areaW = c.maxWidth;
+                  final areaH = c.maxHeight;
+                  final margin = _settings.zoneMargin * _dpPerCm;
+                  final zw = math.max(
+                    0.0,
+                    math.min(3 * _dpPerCm, areaW / 2 - margin),
+                  );
+                  final zh = math.min(5 * _dpPerCm, areaH);
+                  var top = _settings.zoneVertical * areaH - zh / 2;
+                  if (top < 0) top = 0;
+                  if (top > areaH - zh) top = areaH - zh;
+                  final alpha = (_settings.zoneOpacity * 255).round();
+
+                  Widget zone({required bool left}) {
+                    return Positioned(
+                      top: top,
+                      width: zw,
+                      height: zh,
+                      left: left ? margin : null,
+                      right: left ? null : margin,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggle,
+                        child: ColoredBox(
+                          color: Colors.white.withAlpha(alpha),
+                        ),
                       ),
-                    ),
-                    Text(
-                      word[p],
-                      style: style.copyWith(color: Colors.redAccent),
-                    ),
-                    Expanded(
-                      child: Text(
-                        word.substring(p + 1),
-                        softWrap: false,
-                        overflow: TextOverflow.visible,
-                        style: style,
+                    );
+                  }
+
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              word.substring(0, p),
+                              textAlign: TextAlign.right,
+                              softWrap: false,
+                              overflow: TextOverflow.visible,
+                              style: style,
+                            ),
+                          ),
+                          Text(
+                            word[p],
+                            style: style.copyWith(color: Colors.redAccent),
+                          ),
+                          Expanded(
+                            child: Text(
+                              word.substring(p + 1),
+                              softWrap: false,
+                              overflow: TextOverflow.visible,
+                              style: style,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
+                      if (_fullscreen) ...[
+                        zone(left: true),
+                        zone(left: false),
+                        Center(
+                          child: Transform.translate(
+                            offset: Offset(dx, 0),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _toggleFullscreen,
+                              child: SizedBox(width: hitW, height: hitH),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               ),
             ),
-            LinearProgressIndicator(value: progress),
             if (!_fullscreen) ...[
               Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Text(
-                  '${_wpm.round()} WPM · restano circa ${_fmt(remaining)}',
+                  'Parola ${_index + 1} di $total · '
+                  'restano circa ${_fmt(remaining)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              Slider(
+                value: _index.toDouble(),
+                min: 0,
+                max: total > 1 ? (total - 1).toDouble() : 1.0,
+                onChangeStart: (_) {
+                  _seekWasPlaying = _playing;
+                  _timer?.cancel();
+                  setState(() => _playing = false);
+                },
+                onChanged: (v) {
+                  setState(() => _index = v.round().clamp(0, total - 1));
+                },
+                onChangeEnd: (_) {
+                  _save();
+                  if (_seekWasPlaying) {
+                    setState(() => _playing = true);
+                    _due = DateTime.now();
+                    _schedule();
+                  }
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Text(
+                  'Velocità: ${_wpm.round()} WPM',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
               Slider(
@@ -610,59 +797,59 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 onChangeEnd: (v) => SharedPreferences.getInstance()
                     .then((prefs) => prefs.setDouble('wpm', v)),
               ),
-            ],
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Paragrafo indietro',
-                    onPressed: _paragraphBack,
-                    icon: const Icon(Icons.skip_previous),
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Frase indietro',
-                    onPressed: _sentenceBack,
-                    icon: const Icon(Icons.keyboard_double_arrow_left),
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Parola indietro',
-                    onPressed: () => _goTo(_index - 1),
-                    icon: const Icon(Icons.chevron_left),
-                  ),
-                  IconButton(
-                    iconSize: 64,
-                    onPressed: _toggle,
-                    icon: Icon(
-                      _playing ? Icons.pause_circle : Icons.play_circle,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Paragrafo indietro',
+                      onPressed: _paragraphBack,
+                      icon: const Icon(Icons.skip_previous),
                     ),
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Parola avanti',
-                    onPressed: () => _goTo(_index + 1),
-                    icon: const Icon(Icons.chevron_right),
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Frase avanti',
-                    onPressed: _sentenceForward,
-                    icon: const Icon(Icons.keyboard_double_arrow_right),
-                  ),
-                  IconButton(
-                    iconSize: 32,
-                    tooltip: 'Paragrafo avanti',
-                    onPressed: _paragraphForward,
-                    icon: const Icon(Icons.skip_next),
-                  ),
-                ],
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Frase indietro',
+                      onPressed: _sentenceBack,
+                      icon: const Icon(Icons.keyboard_double_arrow_left),
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Parola indietro',
+                      onPressed: () => _goTo(_index - 1),
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    IconButton(
+                      iconSize: 64,
+                      onPressed: _toggle,
+                      icon: Icon(
+                        _playing ? Icons.pause_circle : Icons.play_circle,
+                      ),
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Parola avanti',
+                      onPressed: () => _goTo(_index + 1),
+                      icon: const Icon(Icons.chevron_right),
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Frase avanti',
+                      onPressed: _sentenceForward,
+                      icon: const Icon(Icons.keyboard_double_arrow_right),
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      tooltip: 'Paragrafo avanti',
+                      onPressed: _paragraphForward,
+                      icon: const Icon(Icons.skip_next),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
           ],
         ),
       ),
