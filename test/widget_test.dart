@@ -9,4 +9,16 @@ void main() {
     await tester.pump();
     expect(find.text("Leggi dall'inizio"), findsOneWidget);
   });
+
+  test('parseText divide in paragrafi con riga vuota', () {
+    final r = parseText('Ciao mondo.\n\nSecondo paragrafo qui.');
+    expect(r.words.length, 5);
+    expect(r.starts, [0, 2]);
+  });
+
+  test('parseText usa gli a capo se non ci sono righe vuote', () {
+    final r = parseText('a b\nc d');
+    expect(r.words.length, 4);
+    expect(r.starts, [0, 2]);
+  });
 }
