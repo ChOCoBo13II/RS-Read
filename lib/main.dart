@@ -160,13 +160,16 @@ class _ReaderPageState extends State<ReaderPage> {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(
-      fontSize: 40,
+        final word = widget.words[_index];
+    final p = _pivot(word);
+    final side = p > word.length - 1 - p ? p : word.length - 1 - p;
+    final half = MediaQuery.of(context).size.width / 2 - 16;
+    final fit = half / ((side + 0.5) * 0.65);
+    final style = TextStyle(
+      fontSize: fit < 40.0 ? fit : 40.0,
       fontWeight: FontWeight.w500,
       fontFamily: 'monospace',
     );
-    final word = widget.words[_index];
-    final p = _pivot(word);
     final total = widget.words.length;
     final remaining = ((total - _index) * 60 / _wpm).round();
     final progress = total > 1 ? _index / (total - 1) : 1.0;
