@@ -101,11 +101,11 @@ class _ReaderPageState extends State<ReaderPage> {
     super.dispose();
   }
 
-  int _pivot(String w) {
+    int _pivot(String w) {
     final len = w.length;
-    final p = len <= 1 ? 0 : len <= 5 ? 1 : len <= 9 ? 2 : len <= 13 ? 3 : 4;
+    final p = len <= 1 ? 0 : len <= 5 ? 1 : len <= 9 ? 2 : (len - 1) ~/ 2;
     return p.clamp(0, len - 1);
-  }
+    }
 
   void _schedule() {
     if (!_playing) return;
