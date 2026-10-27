@@ -38,6 +38,13 @@ class ReadSettings {
   double zoneOpacity = 0.0;
   double zoneVertical = 0.5;
   double zoneMargin = 0.0;
+  bool zoneSeparate = false;
+  double zoneLeftW = 3.0;
+  double zoneLeftH = 5.0;
+  bool zoneLeftAbove = false;
+  double zoneRightW = 3.0;
+  double zoneRightH = 5.0;
+  bool zoneRightAbove = false;
 
   static Future<ReadSettings> load() async {
     final p = await SharedPreferences.getInstance();
@@ -51,6 +58,13 @@ class ReadSettings {
     s.zoneOpacity = p.getDouble('zoneOpacity') ?? s.zoneOpacity;
     s.zoneVertical = p.getDouble('zoneVertical') ?? s.zoneVertical;
     s.zoneMargin = p.getDouble('zoneMargin') ?? s.zoneMargin;
+    s.zoneSeparate = p.getBool('zoneSeparate') ?? s.zoneSeparate;
+    s.zoneLeftW = p.getDouble('zoneLeftW') ?? s.zoneLeftW;
+    s.zoneLeftH = p.getDouble('zoneLeftH') ?? s.zoneLeftH;
+    s.zoneLeftAbove = p.getBool('zoneLeftAbove') ?? s.zoneLeftAbove;
+    s.zoneRightW = p.getDouble('zoneRightW') ?? s.zoneRightW;
+    s.zoneRightH = p.getDouble('zoneRightH') ?? s.zoneRightH;
+    s.zoneRightAbove = p.getBool('zoneRightAbove') ?? s.zoneRightAbove;
     return s;
   }
 
@@ -65,6 +79,13 @@ class ReadSettings {
     await p.setDouble('zoneOpacity', zoneOpacity);
     await p.setDouble('zoneVertical', zoneVertical);
     await p.setDouble('zoneMargin', zoneMargin);
+    await p.setBool('zoneSeparate', zoneSeparate);
+    await p.setDouble('zoneLeftW', zoneLeftW);
+    await p.setDouble('zoneLeftH', zoneLeftH);
+    await p.setBool('zoneLeftAbove', zoneLeftAbove);
+    await p.setDouble('zoneRightW', zoneRightW);
+    await p.setDouble('zoneRightH', zoneRightH);
+    await p.setBool('zoneRightAbove', zoneRightAbove);
   }
 }
 
@@ -207,14 +228,15 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
-  Widget _slider(
-    String text,
-    double value,
-    double max,
-    int divisions,
-    ValueChanged<double> onChanged,
-    ReadSettings s,
-  ) {
+  Widget _slider({
+    required String text,
+    required double value,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+    required ReadSettings s,
+    double min = 0,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -224,7 +246,7 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         Slider(
           value: value,
-          min: 0,
+          min: min,
           max: max,
           divisions: divisions,
           onChanged: (v) => setState(() => onChanged(v)),
@@ -244,6 +266,47 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  List<Widget> _zoneControls({
+    required String name,
+    required double w,
+    required double h,
+    required bool above,
+    required ValueChanged<double> onW,
+    required ValueChanged<double> onH,
+    required ValueChanged<bool> onAbove,
+    required ReadSettings s,
+  }) {
+    return [
+      _slider(
+        text: 'Larghezza$name: ${w.toStringAsFixed(1)} cm',
+        value: w,
+        min: 0.5,
+        max: 8,
+        divisions: 15,
+        onChanged: onW,
+        s: s,
+      ),
+      _slider(
+        text: 'Altezza$name: ${h.toStringAsFixed(1)} cm',
+        value: h,
+        min: 1,
+        max: 12,
+        divisions: 22,
+        onChanged: onH,
+        s: s,
+      ),
+      SwitchListTile(
+        title: Text('Zona$name sopra l’area della parola'),
+        subtitle: const Text('Dove si sovrappongono, vince la pausa'),
+        value: above,
+        onChanged: (v) {
+          setState(() => onAbove(v));
+          s.save();
+        },
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = _s;
@@ -255,55 +318,94 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 _title('Pause extra, in durate di una parola'),
                 _slider(
-                  'Dopo la virgola: ${s.comma.toStringAsFixed(2)} parole',
-                  s.comma,
-                  3,
-                  12,
-                  (v) => s.comma = v,
-                  s,
+                  text: 'Dopo la virgola: ${s.comma.toStringAsFixed(2)} parole',
+                  value: s.comma,
+                  max: 3,
+                  divisions: 12,
+                  onChanged: (v) => s.comma = v,
+                  s: s,
                 ),
                 _slider(
-                  'Dopo il punto: ${s.period.toStringAsFixed(2)} parole',
-                  s.period,
-                  3,
-                  12,
-                  (v) => s.period = v,
-                  s,
+                  text: 'Dopo il punto: ${s.period.toStringAsFixed(2)} parole',
+                  value: s.period,
+                  max: 3,
+                  divisions: 12,
+                  onChanged: (v) => s.period = v,
+                  s: s,
                 ),
                 _slider(
-                  'Dopo il paragrafo: ${s.paragraph.toStringAsFixed(2)} parole',
-                  s.paragraph,
-                  3,
-                  12,
-                  (v) => s.paragraph = v,
-                  s,
+                  text: 'Dopo il paragrafo: '
+                      '${s.paragraph.toStringAsFixed(2)} parole',
+                  value: s.paragraph,
+                  max: 3,
+                  divisions: 12,
+                  onChanged: (v) => s.paragraph = v,
+                  s: s,
                 ),
                 _title('Zone di pausa (schermo intero)'),
                 _slider(
-                  'Opacità: ${(s.zoneOpacity * 100).round()}%',
-                  s.zoneOpacity,
-                  1,
-                  20,
-                  (v) => s.zoneOpacity = v,
-                  s,
+                  text: 'Opacità: ${(s.zoneOpacity * 100).round()}%',
+                  value: s.zoneOpacity,
+                  max: 1,
+                  divisions: 20,
+                  onChanged: (v) => s.zoneOpacity = v,
+                  s: s,
                 ),
                 _slider(
-                  'Posizione verticale: ${(s.zoneVertical * 100).round()}% '
-                  '(50% = centro)',
-                  s.zoneVertical,
-                  1,
-                  20,
-                  (v) => s.zoneVertical = v,
-                  s,
+                  text: 'Posizione verticale: '
+                      '${(s.zoneVertical * 100).round()}% (50% = centro)',
+                  value: s.zoneVertical,
+                  max: 1,
+                  divisions: 20,
+                  onChanged: (v) => s.zoneVertical = v,
+                  s: s,
                 ),
                 _slider(
-                  'Distanza dal bordo: ${s.zoneMargin.toStringAsFixed(2)} cm',
-                  s.zoneMargin,
-                  2,
-                  8,
-                  (v) => s.zoneMargin = v,
-                  s,
+                  text: 'Distanza dal bordo: '
+                      '${s.zoneMargin.toStringAsFixed(2)} cm',
+                  value: s.zoneMargin,
+                  max: 2,
+                  divisions: 8,
+                  onChanged: (v) => s.zoneMargin = v,
+                  s: s,
                 ),
+                SwitchListTile(
+                  title: const Text('Regola le due zone separatamente'),
+                  subtitle: const Text('Dimensioni e sovrapposizione'),
+                  value: s.zoneSeparate,
+                  onChanged: (v) {
+                    setState(() {
+                      s.zoneSeparate = v;
+                      if (v) {
+                        s.zoneRightW = s.zoneLeftW;
+                        s.zoneRightH = s.zoneLeftH;
+                        s.zoneRightAbove = s.zoneLeftAbove;
+                      }
+                    });
+                    s.save();
+                  },
+                ),
+                ..._zoneControls(
+                  name: s.zoneSeparate ? ' sinistra' : '',
+                  w: s.zoneLeftW,
+                  h: s.zoneLeftH,
+                  above: s.zoneLeftAbove,
+                  onW: (v) => s.zoneLeftW = v,
+                  onH: (v) => s.zoneLeftH = v,
+                  onAbove: (v) => s.zoneLeftAbove = v,
+                  s: s,
+                ),
+                if (s.zoneSeparate)
+                  ..._zoneControls(
+                    name: ' destra',
+                    w: s.zoneRightW,
+                    h: s.zoneRightH,
+                    above: s.zoneRightAbove,
+                    onW: (v) => s.zoneRightW = v,
+                    onH: (v) => s.zoneRightH = v,
+                    onAbove: (v) => s.zoneRightAbove = v,
+                    s: s,
+                  ),
                 _title('Lettura'),
                 SwitchListTile(
                   title: const Text('Avvio graduale'),
@@ -643,6 +745,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final hitW = word.length * cw + 24;
     final hitH = lineH + 24;
 
+    final sep = _settings.zoneSeparate;
+    final leftW = _settings.zoneLeftW;
+    final leftH = _settings.zoneLeftH;
+    final leftAbove = _settings.zoneLeftAbove;
+    final rightW = sep ? _settings.zoneRightW : leftW;
+    final rightH = sep ? _settings.zoneRightH : leftH;
+    final rightAbove = sep ? _settings.zoneRightAbove : leftAbove;
+
     return Scaffold(
       appBar: _fullscreen
           ? null
@@ -677,17 +787,21 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   final areaW = c.maxWidth;
                   final areaH = c.maxHeight;
                   final margin = _settings.zoneMargin * _dpPerCm;
-                  final zw = math.max(
-                    0.0,
-                    math.min(3 * _dpPerCm, areaW / 2 - margin),
-                  );
-                  final zh = math.min(5 * _dpPerCm, areaH);
-                  var top = _settings.zoneVertical * areaH - zh / 2;
-                  if (top < 0) top = 0;
-                  if (top > areaH - zh) top = areaH - zh;
                   final alpha = (_settings.zoneOpacity * 255).round();
 
-                  Widget zone({required bool left}) {
+                  Widget zone({
+                    required bool left,
+                    required double wCm,
+                    required double hCm,
+                  }) {
+                    final zw = math.max(
+                      0.0,
+                      math.min(wCm * _dpPerCm, areaW - margin),
+                    );
+                    final zh = math.min(hCm * _dpPerCm, areaH);
+                    var top = _settings.zoneVertical * areaH - zh / 2;
+                    if (top > areaH - zh) top = areaH - zh;
+                    if (top < 0) top = 0;
                     return Positioned(
                       top: top,
                       width: zw,
@@ -733,8 +847,10 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         ],
                       ),
                       if (_fullscreen) ...[
-                        zone(left: true),
-                        zone(left: false),
+                        if (!leftAbove)
+                          zone(left: true, wCm: leftW, hCm: leftH),
+                        if (!rightAbove)
+                          zone(left: false, wCm: rightW, hCm: rightH),
                         Center(
                           child: Transform.translate(
                             offset: Offset(dx, 0),
@@ -745,6 +861,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
+                        if (leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
+                        if (rightAbove)
+                          zone(left: false, wCm: rightW, hCm: rightH),
                       ],
                     ],
                   );
