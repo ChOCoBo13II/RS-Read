@@ -238,3 +238,4 @@ class _ReaderPageState extends State<ReaderPage> {
       ),
     );
   }
+} 
