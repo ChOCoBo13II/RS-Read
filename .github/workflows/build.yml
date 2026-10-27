@@ -18,6 +18,7 @@ jobs:
       - run: flutter create --platforms=android --project-name rs_reader .
       - run: flutter pub get
       - run: flutter analyze
+      - run: flutter test
       - run: flutter build apk --release
       - run: test -f build/app/outputs/flutter-apk/app-release.apk
       - uses: actions/upload-artifact@v4
