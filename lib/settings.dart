@@ -13,10 +13,10 @@ class ReadSettings {
   double zoneVertical = 0.5;
   double zoneMargin = 0.0;
   bool zoneSeparate = false;
-  double zoneLeftW = 3.0;
+  double zoneLeftW = 1.5;
   double zoneLeftH = 5.0;
   bool zoneLeftAbove = false;
-  double zoneRightW = 3.0;
+  double zoneRightW = 1.5;
   double zoneRightH = 5.0;
   bool zoneRightAbove = false;
 
