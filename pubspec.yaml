@@ -2,20 +2,21 @@ name: rs_reader
 description: Lettore rapido RSVP
 publish_to: 'none'
 version: 0.1.0+1
-
+ 
 environment:
   sdk: '>=3.0.0 <4.0.0'
-
+ 
 dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.5.4
   wakelock_plus: ^1.8.1
-
+  flutter_soloud: ^5.2.2
+ 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: any
-
+ 
 flutter:
   uses-material-design: true
