@@ -8,7 +8,7 @@ class ReadSettings {
   bool keepAwake = true;
   bool showFullscreenHint = true;
   bool tick = true;
-  double tickVolume = 0.6;
+  double tickVolume = 0.5;
   double zoneOpacity = 0.0;
   double zoneVertical = 0.5;
   double zoneMargin = 0.0;
