@@ -270,7 +270,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
         backgroundColor: const Color(0xFF0D3E69),
         duration: const Duration(seconds: 6),
         content: const Text(
-          'Tocca i lati per la pausa, la parola per uscire',
+          'Modalità Focus: tocca i lati per la pausa, la parola per uscire',
           style: TextStyle(color: Colors.white),
         ),
         action: SnackBarAction(
@@ -348,7 +348,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   icon: const Icon(Icons.replay),
                 ),
                 IconButton(
-                  tooltip: 'Schermo intero',
+                  tooltip: 'Modalità Focus',
                   onPressed: _toggleFullscreen,
                   icon: const Icon(Icons.fullscreen),
                 ),
@@ -371,6 +371,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                   final areaH = c.maxHeight;
                   final margin = _settings.zoneMargin * _dpPerCm;
                   final alpha = (_settings.zoneOpacity * 255).round();
+                  // In Modalità Focus vale la posizione impostata; fuori
+                  // dal Focus le zone stanno sempre al centro della parola.
+                  final vertical = _fullscreen ? _settings.zoneVertical : 0.5;
 
                   Widget zone({
                     required bool left,
@@ -382,7 +385,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                       math.min(wCm * _dpPerCm, areaW - margin),
                     );
                     final zh = math.min(hCm * _dpPerCm, areaH);
-                    var top = _settings.zoneVertical * areaH - zh / 2;
+                    var top = vertical * areaH - zh / 2;
                     if (top > areaH - zh) top = areaH - zh;
                     if (top < 0) top = 0;
                     return Positioned(
@@ -429,25 +432,22 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                           ),
                         ],
                       ),
-                      if (_fullscreen) ...[
-                        if (!leftAbove)
-                          zone(left: true, wCm: leftW, hCm: leftH),
-                        if (!rightAbove)
-                          zone(left: false, wCm: rightW, hCm: rightH),
-                        Center(
-                          child: Transform.translate(
-                            offset: Offset(dx, 0),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _toggleFullscreen,
-                              child: SizedBox(width: hitW, height: hitH),
-                            ),
+                      if (!leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
+                      if (!rightAbove)
+                        zone(left: false, wCm: rightW, hCm: rightH),
+                      Center(
+                        child: Transform.translate(
+                          offset: Offset(dx, 0),
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _toggleFullscreen,
+                            child: SizedBox(width: hitW, height: hitH),
                           ),
                         ),
-                        if (leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
-                        if (rightAbove)
-                          zone(left: false, wCm: rightW, hCm: rightH),
-                      ],
+                      ),
+                      if (leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
+                      if (rightAbove)
+                        zone(left: false, wCm: rightW, hCm: rightH),
                     ],
                   );
                 },
