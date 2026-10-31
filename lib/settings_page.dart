@@ -155,7 +155,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     title: const Text('Avvio graduale'),
                     subtitle: const Text(
-                      'Parte a metà velocità e sale in 10 parole',
+                      'Parte al 40% della velocità e sale in 30 parole',
                     ),
                     value: s.gradual,
                     onChanged: (v) {
@@ -175,7 +175,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ]),
                 _section('Pause extra', Icons.timer_outlined, [
-                  _label('In durate di una parola'),
+                  _label('Pause per punteggiatura'),
                   _slider(
                     text: 'Dopo la virgola: '
                         '${s.comma.toStringAsFixed(2)} parole',
