@@ -128,8 +128,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       factor += _settings.comma;
     }
     if (w.length > 10) factor += 0.3;
-    final steps = _sinceStart < 10 ? _sinceStart : 10;
-    final ramp = _settings.gradual ? 0.5 + 0.05 * steps : 1.0;
+    final steps = _sinceStart < 30 ? _sinceStart : 30;
+    final ramp = _settings.gradual ? 0.4 + 0.02 * steps : 1.0;
     final micros = (60000000 / (_wpm * ramp) * factor).round();
     _due = _due.add(Duration(microseconds: micros));
     var delay = _due.difference(DateTime.now());
