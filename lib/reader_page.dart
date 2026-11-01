@@ -6,8 +6,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'backdrop.dart';
+import 'scrub_bar.dart';
 import 'settings.dart';
 import 'settings_page.dart';
+import 'theme.dart';
 import 'tick_player.dart';
 
 class ReaderPage extends StatefulWidget {
@@ -302,20 +305,23 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     return '$m:${r.toString().padLeft(2, '0')}';
   }
 
-  @override
-  Widget build(BuildContext context) {
+  // Velocità da frazione della barra (100–1000 WPM, passi da 10).
+  double _wpmFrom(double f) => 100 + (f * 90).round() * 10.0;
+
+  // Parola + zone di pausa + area di tocco della parola. Usato sia dentro
+  // la card nera sia a schermo intero: la parola sta sempre al centro.
+  Widget _wordStack(double areaW, double areaH) {
     final word = widget.words[_index];
     final p = _pivot(word);
     final side = p > word.length - 1 - p ? p : word.length - 1 - p;
-    final half = MediaQuery.of(context).size.width / 2 - 16;
+    final half = areaW / 2 - 16;
     final fit = half / ((side + 0.5) * 0.65);
     final style = TextStyle(
       fontSize: fit < 40.0 ? fit : 40.0,
       fontWeight: FontWeight.w500,
       fontFamily: 'monospace',
+      color: Colors.white,
     );
-    final total = widget.words.length;
-    final remaining = ((total - _index) * 60 / _wpm).round();
 
     final probe = TextPainter(
       text: TextSpan(text: 'M', style: style),
@@ -336,223 +342,302 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     final rightH = sep ? _settings.zoneRightH : leftH;
     final rightAbove = sep ? _settings.zoneRightAbove : leftAbove;
 
-    return Scaffold(
-      appBar: _fullscreen
-          ? null
-          : AppBar(
-              title: const Text('Lettura'),
-              actions: [
-                IconButton(
-                  tooltip: 'Dall’inizio',
-                  onPressed: _restart,
-                  icon: const Icon(Icons.replay),
-                ),
-                IconButton(
-                  tooltip: 'Modalità Focus',
-                  onPressed: _toggleFullscreen,
-                  icon: const Icon(Icons.fullscreen),
-                ),
-                IconButton(
-                  tooltip: 'Impostazioni',
-                  onPressed: _openSettings,
-                  icon: const Icon(Icons.settings),
-                ),
-              ],
-            ),
-      body: SafeArea(
-        top: !_fullscreen,
-        bottom: !_fullscreen,
-        child: Column(
+    final margin = _settings.zoneMargin * _dpPerCm;
+    final alpha = (_settings.zoneOpacity * 255).round();
+    // In Modalità Focus vale la posizione impostata; fuori dal Focus le zone
+    // stanno sempre al centro della parola.
+    final vertical = _fullscreen ? _settings.zoneVertical : 0.5;
+
+    Widget zone({
+      required bool left,
+      required double wCm,
+      required double hCm,
+    }) {
+      final zw = math.max(0.0, math.min(wCm * _dpPerCm, areaW - margin));
+      final zh = math.min(hCm * _dpPerCm, areaH);
+      var top = vertical * areaH - zh / 2;
+      if (top > areaH - zh) top = areaH - zh;
+      if (top < 0) top = 0;
+      return Positioned(
+        top: top,
+        width: zw,
+        height: zh,
+        left: left ? margin : null,
+        right: left ? null : margin,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _toggle,
+          child: ColoredBox(color: Colors.white.withAlpha(alpha)),
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Row(
           children: [
             Expanded(
-              child: LayoutBuilder(
+              child: Text(
+                word.substring(0, p),
+                textAlign: TextAlign.right,
+                softWrap: false,
+                overflow: TextOverflow.visible,
+                style: style,
+              ),
+            ),
+            Text(word[p], style: style.copyWith(color: Ui.red)),
+            Expanded(
+              child: Text(
+                word.substring(p + 1),
+                softWrap: false,
+                overflow: TextOverflow.visible,
+                style: style,
+              ),
+            ),
+          ],
+        ),
+        if (!leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
+        if (!rightAbove) zone(left: false, wCm: rightW, hCm: rightH),
+        Center(
+          child: Transform.translate(
+            offset: Offset(dx, 0),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleFullscreen,
+              child: SizedBox(width: hitW, height: hitH),
+            ),
+          ),
+        ),
+        if (leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
+        if (rightAbove) zone(left: false, wCm: rightW, hCm: rightH),
+      ],
+    );
+  }
+
+  Widget _header() {
+    return Glass(
+      radius: 28,
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Indietro',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.chevron_left, size: 30, color: Ui.ink),
+          ),
+          const Expanded(
+            child: Text(
+              'Lettura',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Ui.ink,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Dall’inizio',
+            onPressed: _restart,
+            icon: const Icon(Icons.replay, color: Ui.ink),
+          ),
+          IconButton(
+            tooltip: 'Modalità Focus',
+            onPressed: _toggleFullscreen,
+            icon: const Icon(Icons.fullscreen, color: Ui.ink),
+          ),
+          IconButton(
+            tooltip: 'Impostazioni',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.tune, color: Ui.ink),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _capsule() {
+    Widget btn(String tip, IconData icon, VoidCallback onTap) {
+      return IconButton(
+        tooltip: tip,
+        onPressed: onTap,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 38, height: 48),
+        icon: Icon(icon, size: 26, color: Ui.yellow),
+      );
+    }
+
+    const gap = SizedBox(width: 8);
+    return Container(
+      height: 76,
+      decoration: const BoxDecoration(
+        color: Ui.ink,
+        borderRadius: BorderRadius.all(Radius.circular(38)),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              btn('Paragrafo indietro', Icons.skip_previous, _paragraphBack),
+              gap,
+              btn(
+                'Frase indietro',
+                Icons.keyboard_double_arrow_left,
+                _sentenceBack,
+              ),
+              gap,
+              btn('Parola indietro', Icons.chevron_left, () => _goTo(_index - 1)),
+              gap,
+              SizedBox(
+                width: 54,
+                height: 54,
+                child: IconButton(
+                  tooltip: _playing ? 'Pausa' : 'Riproduci',
+                  onPressed: _toggle,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Ui.yellow,
+                    foregroundColor: Ui.ink,
+                    shape: const CircleBorder(),
+                    padding: EdgeInsets.zero,
+                  ),
+                  icon: Icon(
+                    _playing ? Icons.pause : Icons.play_arrow,
+                    size: 30,
+                  ),
+                ),
+              ),
+              gap,
+              btn('Parola avanti', Icons.chevron_right, () => _goTo(_index + 1)),
+              gap,
+              btn(
+                'Frase avanti',
+                Icons.keyboard_double_arrow_right,
+                _sentenceForward,
+              ),
+              gap,
+              btn('Paragrafo avanti', Icons.skip_next, _paragraphForward),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _controls(int total, int remaining) {
+    const mute = TextStyle(
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+      color: Color(0xB3000000),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Parola ${_index + 1} di $total · restano circa ${_fmt(remaining)}',
+          textAlign: TextAlign.center,
+          style: mute,
+        ),
+        const SizedBox(height: 10),
+        ScrubBar(
+          value: total > 1 ? _index / (total - 1) : 0.0,
+          onChangeStart: () {
+            _seekWasPlaying = _playing;
+            _timer?.cancel();
+            setState(() => _playing = false);
+          },
+          onChanged: (f) {
+            setState(() => _index = (f * (total - 1)).round().clamp(0, total - 1));
+          },
+          onChangeEnd: (_) {
+            _save();
+            if (_seekWasPlaying) {
+              setState(() => _playing = true);
+              _playTick();
+              _due = DateTime.now();
+              _schedule();
+            }
+          },
+        ),
+        const SizedBox(height: 10),
+        Text('Velocità: ${_wpm.round()} WPM', style: mute),
+        const SizedBox(height: 2),
+        ScrubBar(
+          value: (_wpm - 100) / 900,
+          divisions: 90,
+          onChanged: (f) => setState(() => _wpm = _wpmFrom(f)),
+          onChangeEnd: (f) => SharedPreferences.getInstance()
+              .then((prefs) => prefs.setDouble('wpm', _wpmFrom(f))),
+        ),
+        const Spacer(),
+        _capsule(),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.words.length;
+    final remaining = ((total - _index) * 60 / _wpm).round();
+
+    return Theme(
+      data: Ui.yellowTheme,
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _fullscreen ? SystemUiOverlayStyle.light : Ui.yellowOverlay,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _fullscreen
+                  ? const ColoredBox(color: Ui.ink)
+                  : const AppBackdrop(),
+            ),
+            Scaffold(
+              backgroundColor: Colors.transparent,
+              body: LayoutBuilder(
                 builder: (context, c) {
-                  final areaW = c.maxWidth;
-                  final areaH = c.maxHeight;
-                  final margin = _settings.zoneMargin * _dpPerCm;
-                  final alpha = (_settings.zoneOpacity * 255).round();
-                  // In Modalità Focus vale la posizione impostata; fuori
-                  // dal Focus le zone stanno sempre al centro della parola.
-                  final vertical = _fullscreen ? _settings.zoneVertical : 0.5;
+                  final w = c.maxWidth;
+                  final h = c.maxHeight;
+                  if (_fullscreen) return _wordStack(w, h);
 
-                  Widget zone({
-                    required bool left,
-                    required double wCm,
-                    required double hCm,
-                  }) {
-                    final zw = math.max(
-                      0.0,
-                      math.min(wCm * _dpPerCm, areaW - margin),
-                    );
-                    final zh = math.min(hCm * _dpPerCm, areaH);
-                    var top = vertical * areaH - zh / 2;
-                    if (top > areaH - zh) top = areaH - zh;
-                    if (top < 0) top = 0;
-                    return Positioned(
-                      top: top,
-                      width: zw,
-                      height: zh,
-                      left: left ? margin : null,
-                      right: left ? null : margin,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _toggle,
-                        child: ColoredBox(
-                          color: Colors.white.withAlpha(alpha),
-                        ),
-                      ),
-                    );
-                  }
-
+                  final pad = MediaQuery.of(context).padding;
+                  final cardH = h * 0.35;
+                  final cardTop = h / 2 - cardH / 2;
                   return Stack(
-                    fit: StackFit.expand,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              word.substring(0, p),
-                              textAlign: TextAlign.right,
-                              softWrap: false,
-                              overflow: TextOverflow.visible,
-                              style: style,
-                            ),
-                          ),
-                          Text(
-                            word[p],
-                            style: style.copyWith(color: Colors.redAccent),
-                          ),
-                          Expanded(
-                            child: Text(
-                              word.substring(p + 1),
-                              softWrap: false,
-                              overflow: TextOverflow.visible,
-                              style: style,
-                            ),
-                          ),
-                        ],
+                      Positioned(
+                        top: pad.top + 8,
+                        left: 20,
+                        right: 20,
+                        height: 56,
+                        child: _header(),
                       ),
-                      if (!leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
-                      if (!rightAbove)
-                        zone(left: false, wCm: rightW, hCm: rightH),
-                      Center(
-                        child: Transform.translate(
-                          offset: Offset(dx, 0),
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _toggleFullscreen,
-                            child: SizedBox(width: hitW, height: hitH),
+                      Positioned(
+                        top: cardTop,
+                        left: 20,
+                        right: 20,
+                        height: cardH,
+                        child: Container(
+                          clipBehavior: Clip.antiAlias,
+                          decoration: const BoxDecoration(
+                            color: Ui.ink,
+                            borderRadius: Ui.corners,
                           ),
+                          child: _wordStack(w - 40, cardH),
                         ),
                       ),
-                      if (leftAbove) zone(left: true, wCm: leftW, hCm: leftH),
-                      if (rightAbove)
-                        zone(left: false, wCm: rightW, hCm: rightH),
+                      Positioned(
+                        top: cardTop + cardH + 12,
+                        left: 20,
+                        right: 20,
+                        bottom: pad.bottom + 16,
+                        child: _controls(total, remaining),
+                      ),
                     ],
                   );
                 },
               ),
             ),
-            if (!_fullscreen) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: Text(
-                  'Parola ${_index + 1} di $total · '
-                  'restano circa ${_fmt(remaining)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              Slider(
-                value: _index.toDouble(),
-                min: 0,
-                max: total > 1 ? (total - 1).toDouble() : 1.0,
-                onChangeStart: (_) {
-                  _seekWasPlaying = _playing;
-                  _timer?.cancel();
-                  setState(() => _playing = false);
-                },
-                onChanged: (v) {
-                  setState(() => _index = v.round().clamp(0, total - 1));
-                },
-                onChangeEnd: (_) {
-                  _save();
-                  if (_seekWasPlaying) {
-                    setState(() => _playing = true);
-                    _playTick();
-                    _due = DateTime.now();
-                    _schedule();
-                  }
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                child: Text(
-                  'Velocità: ${_wpm.round()} WPM',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-              Slider(
-                value: _wpm,
-                min: 100,
-                max: 1000,
-                divisions: 90,
-                onChanged: (v) => setState(() => _wpm = v),
-                onChangeEnd: (v) => SharedPreferences.getInstance()
-                    .then((prefs) => prefs.setDouble('wpm', v)),
-              ),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Paragrafo indietro',
-                      onPressed: _paragraphBack,
-                      icon: const Icon(Icons.skip_previous),
-                    ),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Frase indietro',
-                      onPressed: _sentenceBack,
-                      icon: const Icon(Icons.keyboard_double_arrow_left),
-                    ),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Parola indietro',
-                      onPressed: () => _goTo(_index - 1),
-                      icon: const Icon(Icons.chevron_left),
-                    ),
-                    IconButton(
-                      iconSize: 64,
-                      onPressed: _toggle,
-                      icon: Icon(
-                        _playing ? Icons.pause_circle : Icons.play_circle,
-                      ),
-                    ),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Parola avanti',
-                      onPressed: () => _goTo(_index + 1),
-                      icon: const Icon(Icons.chevron_right),
-                    ),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Frase avanti',
-                      onPressed: _sentenceForward,
-                      icon: const Icon(Icons.keyboard_double_arrow_right),
-                    ),
-                    IconButton(
-                      iconSize: 32,
-                      tooltip: 'Paragrafo avanti',
-                      onPressed: _paragraphForward,
-                      icon: const Icon(Icons.skip_next),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
           ],
         ),
       ),
