@@ -498,7 +498,7 @@ class _ReaderPageState extends State<ReaderPage>
     return Container(
       height: 76,
       decoration: const BoxDecoration(
-        color: Ui.ink,
+        color: Ui.card,
         borderRadius: BorderRadius.all(Radius.circular(38)),
       ),
       child: FittedBox(
@@ -676,13 +676,14 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
-  // Scena: la macchia nera (card che diventa cerchio), la parola ferma al
+  // Scena: la macchia scura (card che diventa cerchio), la parola ferma al
   // centro, l'intestazione che esce in alto e i comandi che escono in basso.
-  // t: 0 = Player, 1 = Focus.
+  // t: 0 = Player, 1 = Focus. shade: colore della macchia in questo momento.
   Widget _stage(
     BuildContext ctx,
     BoxConstraints c,
     double t,
+    Color shade,
     int total,
     int remaining,
   ) {
@@ -721,7 +722,7 @@ class _ReaderPageState extends State<ReaderPage>
           child: Container(
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: Ui.ink,
+              color: shade,
               borderRadius: BorderRadius.circular(radius),
             ),
             child: Center(
@@ -774,6 +775,10 @@ class _ReaderPageState extends State<ReaderPage>
         animation: _anim,
         builder: (context, _) {
           final t = _anim.value;
+          // Il colore della macchia passa da Ui.card a nero puro entro il 40%
+          // dell'animazione (e viceversa al ritorno).
+          final shade =
+              Color.lerp(Ui.card, Ui.ink, math.min(1.0, t / 0.4)) ?? Ui.ink;
           return AnnotatedRegion<SystemUiOverlayStyle>(
             value: t > 0.5 ? SystemUiOverlayStyle.light : Ui.yellowOverlay,
             child: Stack(
@@ -786,7 +791,8 @@ class _ReaderPageState extends State<ReaderPage>
                 Scaffold(
                   backgroundColor: Colors.transparent,
                   body: LayoutBuilder(
-                    builder: (ctx, c) => _stage(ctx, c, t, total, remaining),
+                    builder: (ctx, c) =>
+                        _stage(ctx, c, t, shade, total, remaining),
                   ),
                 ),
                 Positioned(
