@@ -17,10 +17,10 @@ class ReadSettings {
   bool zoneSeparate = false;
   double zoneLeftW = 1.5;
   double zoneLeftH = 5.0;
-  bool zoneLeftAbove = false;
+  bool zoneLeftAbove = true;
   double zoneRightW = 1.5;
   double zoneRightH = 5.0;
-  bool zoneRightAbove = false;
+  bool zoneRightAbove = true;
 
   static Future<ReadSettings> load() async {
     final p = await SharedPreferences.getInstance();
