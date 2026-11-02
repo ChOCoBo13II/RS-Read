@@ -36,10 +36,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   double _wpm = 300;
   bool _playing = false;
   bool _fullscreen = false;
+  bool _hintVisible = false;
   bool _seekWasPlaying = false;
   int _sinceStart = 0;
   ReadSettings _settings = ReadSettings();
   Timer? _timer;
+  Timer? _hintTimer;
   DateTime _due = DateTime.now();
 
   late final Set<int> _paraEnds =
@@ -61,6 +63,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _hintTimer?.cancel();
     WakelockPlus.disable();
     if (_fullscreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -131,8 +134,11 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       factor += _settings.comma;
     }
     if (w.length > 10) factor += 0.3;
-    final steps = _sinceStart < 30 ? _sinceStart : 30;
-    final ramp = _settings.gradual ? 0.4 + 0.02 * steps : 1.0;
+    final rampWords = _settings.gradualWords;
+    final steps = _sinceStart < rampWords ? _sinceStart : rampWords;
+    final start = _settings.gradualStart;
+    final ramp =
+        _settings.gradual ? start + (1 - start) * steps / rampWords : 1.0;
     final micros = (60000000 / (_wpm * ramp) * factor).round();
     _due = _due.add(Duration(microseconds: micros));
     var delay = _due.difference(DateTime.now());
@@ -255,37 +261,28 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   }
 
   void _toggleFullscreen() {
-    setState(() => _fullscreen = !_fullscreen);
+    final enter = !_fullscreen;
+    setState(() => _fullscreen = enter);
     SystemChrome.setEnabledSystemUIMode(
-      _fullscreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
+      enter ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
-    if (_fullscreen) {
+    if (enter) {
       _showFullscreenHint();
     } else {
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _hideHint();
     }
   }
 
   void _showFullscreenHint() {
     if (!_settings.showFullscreenHint) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: const Color(0xFF0D3E69),
-        duration: const Duration(seconds: 6),
-        content: const Text(
-          'Modalità Focus: tocca i lati per la pausa, la parola per uscire',
-          style: TextStyle(color: Colors.white),
-        ),
-        action: SnackBarAction(
-          label: 'Non mostrare più',
-          textColor: Colors.redAccent,
-          onPressed: () {
-            _settings.showFullscreenHint = false;
-            _settings.save();
-          },
-        ),
-      ),
-    );
+    _hintTimer?.cancel();
+    setState(() => _hintVisible = true);
+    _hintTimer = Timer(const Duration(seconds: 6), _hideHint);
+  }
+
+  void _hideHint() {
+    _hintTimer?.cancel();
+    if (_hintVisible && mounted) setState(() => _hintVisible = false);
   }
 
   Future<void> _openSettings() async {
@@ -310,11 +307,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
   // Parola + zone di pausa + area di tocco della parola. Usato sia dentro
   // la card nera sia a schermo intero: la parola sta sempre al centro.
-  Widget _wordStack(double areaW, double areaH) {
+  // fontW è la larghezza di riferimento per la dimensione del carattere:
+  // è sempre quella della card, così la parola non cambia dimensione
+  // passando dal Player al Focus.
+  Widget _wordStack(double areaW, double areaH, double fontW) {
     final word = widget.words[_index];
     final p = _pivot(word);
     final side = p > word.length - 1 - p ? p : word.length - 1 - p;
-    final half = areaW / 2 - 16;
+    final half = fontW / 2 - 16;
     final fit = half / ((side + 0.5) * 0.65);
     final style = TextStyle(
       fontSize: fit < 40.0 ? fit : 40.0,
@@ -576,6 +576,74 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
+  // Banner di suggerimento della Modalità Focus: giallo, 86 px di altezza,
+  // a 44 px dal bordo basso (la posizione è nel build).
+  Widget _hintBanner() {
+    const base = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
+    return Material(
+      color: Ui.yellow,
+      shape: Ui.shape,
+      child: SizedBox(
+        height: 86,
+        child: Stack(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 12, 24, 0),
+              child: Text(
+                'Modalità Focus: tocca i lati per la pausa, la parola per uscire',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  height: 1.35,
+                  color: Ui.ink,
+                ),
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 10,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _settings.showFullscreenHint = false;
+                  _settings.save();
+                  _hideHint();
+                },
+                child: Container(
+                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Ui.ink, width: 2),
+                    borderRadius: const BorderRadius.all(Radius.circular(15)),
+                  ),
+                  child: Stack(
+                    children: [
+                      Text(
+                        'Non mostrare più',
+                        style: base.copyWith(
+                          foreground: Paint()
+                            ..style = PaintingStyle.stroke
+                            ..strokeWidth = 1.6
+                            ..strokeJoin = StrokeJoin.round
+                            ..color = Ui.ink,
+                        ),
+                      ),
+                      Text(
+                        'Non mostrare più',
+                        style: base.copyWith(color: Ui.red),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = widget.words.length;
@@ -598,7 +666,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                 builder: (context, c) {
                   final w = c.maxWidth;
                   final h = c.maxHeight;
-                  if (_fullscreen) return _wordStack(w, h);
+                  if (_fullscreen) return _wordStack(w, h, w - 40);
 
                   final pad = MediaQuery.of(context).padding;
                   final cardH = h * 0.35;
@@ -623,7 +691,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                             color: Ui.ink,
                             borderRadius: Ui.corners,
                           ),
-                          child: _wordStack(w - 40, cardH),
+                          child: _wordStack(w - 40, cardH, w - 40),
                         ),
                       ),
                       Positioned(
@@ -636,6 +704,17 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                     ],
                   );
                 },
+              ),
+            ),
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 44,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _fullscreen && _hintVisible
+                    ? _hintBanner()
+                    : const SizedBox.shrink(),
               ),
             ),
           ],
