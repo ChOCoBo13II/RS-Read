@@ -576,19 +576,23 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
-  // Banner di suggerimento della Modalità Focus: giallo, 86 px di altezza,
+  // Banner di suggerimento della Modalità Focus: giallo, 104 px di altezza,
   // a 44 px dal bordo basso (la posizione è nel build).
   Widget _hintBanner() {
-    const base = TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
+    const base = TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.2,
+    );
     return Material(
       color: Ui.yellow,
       shape: Ui.shape,
       child: SizedBox(
-        height: 86,
+        height: 104,
         child: Stack(
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(16, 12, 24, 0),
+              padding: EdgeInsets.fromLTRB(16, 14, 24, 0),
               child: Text(
                 'Modalità Focus: tocca i lati per la pausa, la parola per uscire',
                 style: TextStyle(
@@ -601,7 +605,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
             ),
             Positioned(
               right: 16,
-              bottom: 10,
+              bottom: 12,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () {
@@ -624,7 +628,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
                         style: base.copyWith(
                           foreground: Paint()
                             ..style = PaintingStyle.stroke
-                            ..strokeWidth = 1.6
+                            ..strokeWidth = 1.8
                             ..strokeJoin = StrokeJoin.round
                             ..color = Ui.ink,
                         ),
