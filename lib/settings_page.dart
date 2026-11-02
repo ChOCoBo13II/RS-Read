@@ -32,6 +32,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required ValueChanged<double> onChanged,
     required ReadSettings s,
     double min = 0,
+    bool enabled = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,16 +41,29 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
           child: Text(
             text,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: enabled ? null : Ui.muted,
+            ),
           ),
         ),
-        Slider(
-          value: value,
-          min: min,
-          max: max,
-          divisions: divisions,
-          onChanged: (v) => setState(() => onChanged(v)),
-          onChangeEnd: (_) => s.save(),
+        Builder(
+          builder: (ctx) => SliderTheme(
+            data: SliderTheme.of(ctx).copyWith(
+              disabledActiveTrackColor: const Color(0xFF5A5A5E),
+              disabledInactiveTrackColor: const Color(0xFF2C2C2E),
+              disabledThumbColor: const Color(0xFF8E8E93),
+            ),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: enabled ? (v) => setState(() => onChanged(v)) : null,
+              onChangeEnd: enabled ? (_) => s.save() : null,
+            ),
+          ),
         ),
       ],
     );
@@ -197,8 +211,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         _section('Lettura', Icons.play_circle_outline, [
                           SwitchListTile(
                             title: const Text('Avvio graduale'),
-                            subtitle: const Text(
-                              'Parte al 40% della velocità e sale in 30 parole',
+                            subtitle: Text(
+                              'Parte al ${(s.gradualStart * 100).round()}% '
+                              'della velocità e sale in ${s.gradualWords} parole',
                             ),
                             value: s.gradual,
                             onChanged: (v) {
@@ -206,6 +221,30 @@ class _SettingsPageState extends State<SettingsPage> {
                               s.save();
                             },
                           ),
+                          _slider(
+                            text: 'Velocità di partenza: '
+                                '${(s.gradualStart * 100).round()}%',
+                            value: s.gradualStart,
+                            min: 0.3,
+                            max: 0.95,
+                            divisions: 13,
+                            enabled: s.gradual,
+                            onChanged: (v) =>
+                                s.gradualStart = (v * 20).round() / 20,
+                            s: s,
+                          ),
+                          _slider(
+                            text: 'Parole per arrivare al 100%: '
+                                '${s.gradualWords}',
+                            value: s.gradualWords.toDouble(),
+                            min: 10,
+                            max: 100,
+                            divisions: 18,
+                            enabled: s.gradual,
+                            onChanged: (v) => s.gradualWords = v.round(),
+                            s: s,
+                          ),
+                          const SizedBox(height: 8),
                           const Divider(height: 1, indent: 16, endIndent: 16),
                           SwitchListTile(
                             title: const Text('Schermo sempre acceso'),
