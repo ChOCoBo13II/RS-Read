@@ -7,6 +7,9 @@ class Ui {
 
   static const Color yellow = Color(0xFFFFCC00);
   static const Color ink = Color(0xFF000000);
+
+  /// Fondo delle card e dei pulsanti scuri (non è nero puro).
+  static const Color card = Color(0xFF010B13);
   static const Color red = Color(0xFFFF5252);
   static const Color muted = Color(0xFF8E8E93);
   static const Color glassTint = Color(0x2BFF5252);
@@ -72,13 +75,13 @@ class Ui {
     );
   }
 
-  /// Variante per il contenuto dentro le card nere (testo bianco).
+  /// Variante per il contenuto dentro le card scure (testo bianco).
   static ThemeData _onBlack(ThemeData t) {
     return t.copyWith(
       colorScheme: t.colorScheme.copyWith(
         onSurface: Colors.white,
         onSurfaceVariant: muted,
-        surface: ink,
+        surface: card,
       ),
       textTheme: t.textTheme.apply(
         bodyColor: Colors.white,
