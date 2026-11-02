@@ -5,6 +5,8 @@ class ReadSettings {
   double period = 1.0;
   double paragraph = 2.0;
   bool gradual = false;
+  double gradualStart = 0.4;
+  int gradualWords = 30;
   bool keepAwake = true;
   bool showFullscreenHint = true;
   bool tick = true;
@@ -27,6 +29,10 @@ class ReadSettings {
     s.period = p.getDouble('pausePeriod') ?? s.period;
     s.paragraph = p.getDouble('pauseParagraph') ?? s.paragraph;
     s.gradual = p.getBool('gradual') ?? s.gradual;
+    s.gradualStart =
+        (p.getDouble('gradualStart') ?? s.gradualStart).clamp(0.3, 0.95).toDouble();
+    s.gradualWords =
+        (p.getInt('gradualWords') ?? s.gradualWords).clamp(10, 100).toInt();
     s.keepAwake = p.getBool('keepAwake') ?? s.keepAwake;
     s.showFullscreenHint = !(p.getBool('hideFullscreenHint') ?? false);
     s.tick = p.getBool('tick') ?? s.tick;
@@ -50,6 +56,8 @@ class ReadSettings {
     await p.setDouble('pausePeriod', period);
     await p.setDouble('pauseParagraph', paragraph);
     await p.setBool('gradual', gradual);
+    await p.setDouble('gradualStart', gradualStart);
+    await p.setInt('gradualWords', gradualWords);
     await p.setBool('keepAwake', keepAwake);
     await p.setBool('hideFullscreenHint', !showFullscreenHint);
     await p.setBool('tick', tick);
