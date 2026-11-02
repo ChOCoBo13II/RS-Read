@@ -69,7 +69,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  // Sezione: titolo grande con icona (sul giallo) + card nera arrotondata.
+  // Sezione: titolo grande con icona (sul giallo) + card scura arrotondata.
   Widget _section(String title, IconData icon, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,7 +96,7 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Material(
-              color: Ui.ink,
+              color: Ui.card,
               clipBehavior: Clip.antiAlias,
               borderRadius: Ui.corners,
               child: Column(
