@@ -74,7 +74,7 @@ class _HomePageState extends State<HomePage> {
     final canResume = _savedIndex > 0 && _controller.text == _savedText;
     const label = TextStyle(fontSize: 18, fontWeight: FontWeight.w600);
     final filledStyle = FilledButton.styleFrom(
-      backgroundColor: Ui.ink,
+      backgroundColor: Ui.card,
       foregroundColor: Ui.yellow,
       minimumSize: const Size.fromHeight(58),
       shape: Ui.shape,
@@ -132,7 +132,7 @@ class _HomePageState extends State<HomePage> {
                         child: Container(
                           padding: const EdgeInsets.all(22),
                           decoration: const BoxDecoration(
-                            color: Ui.ink,
+                            color: Ui.card,
                             borderRadius: Ui.corners,
                           ),
                           child: TextField(
