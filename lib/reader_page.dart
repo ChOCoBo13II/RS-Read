@@ -29,7 +29,8 @@ class ReaderPage extends StatefulWidget {
   State<ReaderPage> createState() => _ReaderPageState();
 }
 
-class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
+class _ReaderPageState extends State<ReaderPage>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   static const double _dpPerCm = 63.0;
 
   int _index = 0;
@@ -44,6 +45,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   Timer? _hintTimer;
   DateTime _due = DateTime.now();
 
+  // Margini dello schermo congelati mentre dura il Focus e le animazioni,
+  // così il Player non scatta quando le barre di sistema spariscono.
+  EdgeInsets? _padLock;
+
+  // Animazione del Focus: 0 = Player, 1 = Focus. Ingresso 350 ms, uscita 300 ms.
+  late final AnimationController _ac = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+    reverseDuration: const Duration(milliseconds: 300),
+  );
+  late final CurvedAnimation _anim =
+      CurvedAnimation(parent: _ac, curve: Curves.easeInOut);
+
   late final Set<int> _paraEnds =
       widget.starts.where((s) => s > 0).map((s) => s - 1).toSet();
 
@@ -52,6 +66,7 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     super.initState();
     _index = widget.startIndex.clamp(0, widget.words.length - 1);
     WidgetsBinding.instance.addObserver(this);
+    _ac.addStatusListener(_onAnimStatus);
     SharedPreferences.getInstance().then((p) {
       final saved = p.getDouble('wpm');
       if (saved != null && mounted) setState(() => _wpm = saved);
@@ -64,6 +79,8 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _hintTimer?.cancel();
+    _anim.dispose();
+    _ac.dispose();
     WakelockPlus.disable();
     if (_fullscreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -79,6 +96,14 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
       setState(() => _playing = false);
       _applyWakelock();
       _save();
+    }
+  }
+
+  void _onAnimStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed && _fullscreen) {
+      _showFullscreenHint();
+    } else if (status == AnimationStatus.dismissed && mounted) {
+      setState(() => _padLock = null);
     }
   }
 
@@ -260,16 +285,19 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     _goTo(widget.words.length - 1);
   }
 
+  // Un tocco durante l'animazione la inverte da dove si trova.
   void _toggleFullscreen() {
     final enter = !_fullscreen;
+    _padLock ??= MediaQuery.of(context).padding;
     setState(() => _fullscreen = enter);
     SystemChrome.setEnabledSystemUIMode(
       enter ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
     if (enter) {
-      _showFullscreenHint();
+      _ac.forward();
     } else {
       _hideHint();
+      _ac.reverse();
     }
   }
 
@@ -305,12 +333,12 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
   // Velocità da frazione della barra (100–1000 WPM, passi da 10).
   double _wpmFrom(double f) => 100 + (f * 90).round() * 10.0;
 
-  // Parola + zone di pausa + area di tocco della parola. Usato sia dentro
-  // la card nera sia a schermo intero: la parola sta sempre al centro.
-  // fontW è la larghezza di riferimento per la dimensione del carattere:
-  // è sempre quella della card, così la parola non cambia dimensione
-  // passando dal Player al Focus.
-  Widget _wordStack(double areaW, double areaH, double fontW) {
+  // Parola + zone di pausa + area di tocco della parola. La parola sta
+  // sempre al centro dello schermo. fontW è la larghezza di riferimento per
+  // la dimensione del carattere (sempre quella della card). t è l'avanzamento
+  // dell'animazione (0 = Player, 1 = Focus): sposta gradualmente le zone
+  // dal centro alla posizione impostata per il Focus.
+  Widget _wordStack(double areaW, double areaH, double fontW, double t) {
     final word = widget.words[_index];
     final p = _pivot(word);
     final side = p > word.length - 1 - p ? p : word.length - 1 - p;
@@ -344,9 +372,9 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
     final margin = _settings.zoneMargin * _dpPerCm;
     final alpha = (_settings.zoneOpacity * 255).round();
-    // In Modalità Focus vale la posizione impostata; fuori dal Focus le zone
-    // stanno sempre al centro della parola.
-    final vertical = _fullscreen ? _settings.zoneVertical : 0.5;
+    // Nel Focus vale la posizione impostata; fuori dal Focus le zone stanno
+    // sempre al centro della parola.
+    final vertical = 0.5 + (_settings.zoneVertical - 0.5) * t;
 
     Widget zone({
       required bool left,
@@ -648,6 +676,93 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
     );
   }
 
+  // Scena: la macchia nera (card che diventa cerchio), la parola ferma al
+  // centro, l'intestazione che esce in alto e i comandi che escono in basso.
+  // t: 0 = Player, 1 = Focus.
+  Widget _stage(
+    BuildContext ctx,
+    BoxConstraints c,
+    double t,
+    int total,
+    int remaining,
+  ) {
+    final w = c.maxWidth;
+    final h = c.maxHeight;
+    final pad = _padLock ?? MediaQuery.of(ctx).padding;
+
+    final cardW = w - 40;
+    final cardH = h * 0.35;
+    final cardTop = h / 2 - cardH / 2;
+    final diameter = math.sqrt(w * w + h * h) + 40;
+
+    // La larghezza cresce prima dell'altezza; gli angoli arrivano alla
+    // curvatura piena già al 45% dell'animazione.
+    final shapeW = cardW + (diameter - cardW) * math.pow(t, 1.5).toDouble();
+    final shapeH = cardH + (diameter - cardH) * math.pow(t, 2.2).toDouble();
+    final k = math.min(1.0, t / 0.45);
+    final curl = 1 - (1 - k) * (1 - k);
+    final radius =
+        Ui.radius + (math.min(shapeW, shapeH) / 2 - Ui.radius) * curl;
+    final areaW = math.min(shapeW, w);
+    final areaH = math.min(shapeH, h);
+
+    final headerDy = -(pad.top + 80) * t;
+    final controlsTop = cardTop + cardH + 12;
+    final controlsDy = (h - controlsTop + 20) * t;
+    final moving = t > 0.01;
+
+    return Stack(
+      children: [
+        Positioned(
+          left: (w - shapeW) / 2,
+          top: (h - shapeH) / 2,
+          width: shapeW,
+          height: shapeH,
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Ui.ink,
+              borderRadius: BorderRadius.circular(radius),
+            ),
+            child: Center(
+              child: SizedBox(
+                width: areaW,
+                height: areaH,
+                child: _wordStack(areaW, areaH, cardW, t),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: pad.top + 8,
+          left: 20,
+          right: 20,
+          height: 56,
+          child: IgnorePointer(
+            ignoring: moving,
+            child: Transform.translate(
+              offset: Offset(0, headerDy),
+              child: _header(),
+            ),
+          ),
+        ),
+        Positioned(
+          top: controlsTop,
+          left: 20,
+          right: 20,
+          bottom: pad.bottom + 16,
+          child: IgnorePointer(
+            ignoring: moving,
+            child: Transform.translate(
+              offset: Offset(0, controlsDy),
+              child: _controls(total, remaining),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = widget.words.length;
@@ -655,74 +770,40 @@ class _ReaderPageState extends State<ReaderPage> with WidgetsBindingObserver {
 
     return Theme(
       data: Ui.yellowTheme,
-      child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: _fullscreen ? SystemUiOverlayStyle.light : Ui.yellowOverlay,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: _fullscreen
-                  ? const ColoredBox(color: Ui.ink)
-                  : const AppBackdrop(),
+      child: AnimatedBuilder(
+        animation: _anim,
+        builder: (context, _) {
+          final t = _anim.value;
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: t > 0.5 ? SystemUiOverlayStyle.light : Ui.yellowOverlay,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: t >= 1
+                      ? const ColoredBox(color: Ui.ink)
+                      : const AppBackdrop(),
+                ),
+                Scaffold(
+                  backgroundColor: Colors.transparent,
+                  body: LayoutBuilder(
+                    builder: (ctx, c) => _stage(ctx, c, t, total, remaining),
+                  ),
+                ),
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 44,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: _fullscreen && _hintVisible
+                        ? _hintBanner()
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ],
             ),
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              body: LayoutBuilder(
-                builder: (context, c) {
-                  final w = c.maxWidth;
-                  final h = c.maxHeight;
-                  if (_fullscreen) return _wordStack(w, h, w - 40);
-
-                  final pad = MediaQuery.of(context).padding;
-                  final cardH = h * 0.35;
-                  final cardTop = h / 2 - cardH / 2;
-                  return Stack(
-                    children: [
-                      Positioned(
-                        top: pad.top + 8,
-                        left: 20,
-                        right: 20,
-                        height: 56,
-                        child: _header(),
-                      ),
-                      Positioned(
-                        top: cardTop,
-                        left: 20,
-                        right: 20,
-                        height: cardH,
-                        child: Container(
-                          clipBehavior: Clip.antiAlias,
-                          decoration: const BoxDecoration(
-                            color: Ui.ink,
-                            borderRadius: Ui.corners,
-                          ),
-                          child: _wordStack(w - 40, cardH, w - 40),
-                        ),
-                      ),
-                      Positioned(
-                        top: cardTop + cardH + 12,
-                        left: 20,
-                        right: 20,
-                        bottom: pad.bottom + 16,
-                        child: _controls(total, remaining),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 44,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: _fullscreen && _hintVisible
-                    ? _hintBanner()
-                    : const SizedBox.shrink(),
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
