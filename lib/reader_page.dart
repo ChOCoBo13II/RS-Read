@@ -604,8 +604,8 @@ class _ReaderPageState extends State<ReaderPage>
     );
   }
 
-  // Banner di suggerimento della Modalità Focus: giallo, 104 px di altezza,
-  // a 44 px dal bordo basso (la posizione è nel build).
+  // Banner di suggerimento della Modalità Focus: giallo, 104 px di altezza.
+  // La posizione (a 44 px dal bordo basso, o fuori dallo schermo) è nel build.
   Widget _hintBanner() {
     const base = TextStyle(
       fontSize: 14,
@@ -768,6 +768,7 @@ class _ReaderPageState extends State<ReaderPage>
   Widget build(BuildContext context) {
     final total = widget.words.length;
     final remaining = ((total - _index) * 60 / _wpm).round();
+    final showHint = _fullscreen && _hintVisible;
 
     return Theme(
       data: Ui.yellowTheme,
@@ -783,10 +784,16 @@ class _ReaderPageState extends State<ReaderPage>
             value: t > 0.5 ? SystemUiOverlayStyle.light : Ui.yellowOverlay,
             child: Stack(
               children: [
+                // Lo sfondo resta sempre montato (le macchie non tornano al
+                // punto di partenza); si muove solo in pausa e fuori dal Focus.
                 Positioned.fill(
-                  child: t >= 1
-                      ? const ColoredBox(color: Ui.ink)
-                      : const AppBackdrop(),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AppBackdrop(animate: !_playing && !_fullscreen),
+                      if (t >= 1) const ColoredBox(color: Ui.ink),
+                    ],
+                  ),
                 ),
                 Scaffold(
                   backgroundColor: Colors.transparent,
@@ -795,15 +802,17 @@ class _ReaderPageState extends State<ReaderPage>
                         _stage(ctx, c, t, shade, total, remaining),
                   ),
                 ),
-                Positioned(
+                // Il banner sale dal bordo basso (350 ms) e scende (300 ms).
+                AnimatedPositioned(
+                  duration: Duration(milliseconds: showHint ? 350 : 300),
+                  curve: Curves.easeInOut,
                   left: 20,
                   right: 20,
-                  bottom: 44,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: _fullscreen && _hintVisible
-                        ? _hintBanner()
-                        : const SizedBox.shrink(),
+                  height: 104,
+                  bottom: showHint ? 44 : -140,
+                  child: IgnorePointer(
+                    ignoring: !showHint,
+                    child: _hintBanner(),
                   ),
                 ),
               ],
